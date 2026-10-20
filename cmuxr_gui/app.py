@@ -7,9 +7,10 @@ from pathlib import Path
 import threading
 
 from PySide6.QtCore import (QAbstractListModel, QModelIndex, Qt, QTimer, Signal, QObject)
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap, QPalette
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QPalette
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QHBoxLayout,
-    QLabel, QListView, QMenu, QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget)
+    QFileDialog, QLabel, QLineEdit, QListView, QMenu, QMenuBar, QMessageBox,
+    QPushButton, QStyle, QSystemTrayIcon, QVBoxLayout, QWidget)
 from . import backend
 
 
@@ -141,7 +142,9 @@ class ListView(QListView):
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key == Qt.Key.Key_Space:
+        if event.modifiers() & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
+            super().keyPressEvent(event)
+        elif key == Qt.Key.Key_Space:
             self.pause.emit()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.play.emit()
@@ -162,9 +165,12 @@ class Player(QWidget):
         self.setWindowTitle('cmuxr · Music')
         self.current, self.polling, self.appearance_text = {}, False, None
         self.preferences = backend.settings()
+        self.history, self.history_position = [], -1
         self.model = Tracks(tasks)
         self.model.error.connect(self.show_error)
         layout = QVBoxLayout(self)
+        self.menubar = QMenuBar(self)
+        layout.setMenuBar(self.menubar)
         self.now = QLabel('Connecting to cmuxr…')
         self.now.setWordWrap(True)
         layout.addWidget(self.now)
@@ -175,11 +181,16 @@ class Player(QWidget):
             controls.addWidget(button)
         layout.addLayout(controls)
         self.source = QComboBox()
-        self.source.addItems(['Current playlist', 'Library', 'Playing directory'])
+        self.source.addItems(['Current playlist', 'Library', 'Playing directory', 'Browse directory'])
         self.source.currentIndexChanged.connect(self.change_source)
         layout.addWidget(self.source)
-        self.location = QLabel('Current playlist')
-        layout.addWidget(self.location)
+        navigation = QHBoxLayout()
+        self.location = QLineEdit()
+        self.location.setAccessibleName('Directory location')
+        self.location.setPlaceholderText('Enter a directory path')
+        self.location.returnPressed.connect(self.enter_location)
+        self.navigation_layout = navigation
+        layout.addLayout(navigation)
         self.list = ListView()
         self.list.setModel(self.model)
         self.list.setUniformItemSizes(True)
@@ -188,6 +199,8 @@ class Player(QWidget):
         self.list.play.connect(self.play)
         self.list.navigate.connect(self.navigate)
         self.list.doubleClicked.connect(lambda _: self.play())
+        self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self.context_menu)
         layout.addWidget(self.list)
         self.floor = QCheckBox('Disco floor in XR')
         self.floor.setChecked(bool(self.preferences.get('floor_enabled', True)))
@@ -196,6 +209,10 @@ class Player(QWidget):
         self.message = QLabel('Space · pause   Enter · play   ← / → · browse   ↑ / ↓ · wrap')
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
+        self.create_menus()
+        self.list.selectionModel().currentChanged.connect(lambda *_: self.update_actions())
+        self.model.modelReset.connect(self.update_actions)
+        self.model.dataChanged.connect(lambda *_: self.update_actions())
         self.resize(560, 440)
         self.tray = QSystemTrayIcon(app.windowIcon(), self)
         self.menu = QMenu()
@@ -215,7 +232,171 @@ class Player(QWidget):
         self.timer.start(750)
         self.poll()
         self.apply_appearance()
-        self.model.open()
+        self.show_source('playlist')
+
+    def action(self, menu, text, callback, shortcut=None):
+        action = QAction(text, self)
+        action.triggered.connect(lambda checked=False: callback())
+        if shortcut is not None:
+            action.setShortcut(QKeySequence(shortcut))
+        self.addAction(action)
+        menu.addAction(action)
+        return action
+
+    def create_menus(self):
+        file_menu = self.menubar.addMenu('&File')
+        self.action(file_menu, '&Open Files…', self.open_files, QKeySequence.StandardKey.Open)
+        self.action(file_menu, 'Open &Folder…', self.choose_directory, 'Ctrl+Shift+O')
+        file_menu.addSeparator()
+        self.action(file_menu, '&Quit', self.quit, QKeySequence.StandardKey.Quit)
+        playback = self.menubar.addMenu('&Playback')
+        self.action(playback, '&Play Selection', self.play)
+        for text, command in [('&Play / Pause', 'player-pause'), ('&Stop', 'player-stop'),
+                              ('Pre&vious', 'player-prev'), ('&Next', 'player-next')]:
+            self.action(playback, text, lambda c=command: self.command(c))
+        go = self.menubar.addMenu('&Go')
+        self.back_action = self.action(go, '&Back', lambda: self.go_history(-1), 'Alt+Left')
+        self.forward_action = self.action(go, '&Forward', lambda: self.go_history(1), 'Alt+Right')
+        self.up_action = self.action(go, '&Up', lambda: self.navigate(-1), 'Alt+Up')
+        go.addSeparator()
+        self.action(go, '&Home', lambda: self.open_directory(Path.home()), 'Alt+Home')
+        self.action(go, '&Music', lambda: self.open_directory(Path.home() / 'Music'))
+        self.action(go, '&Playing Directory', lambda: self.change_source(2))
+        location = self.action(go, '&Location', self.focus_location)
+        location.setShortcuts([QKeySequence('Ctrl+L'), QKeySequence('Alt+D')])
+        library = self.menubar.addMenu('&Library')
+        self.action(library, 'Show &Library', lambda: self.show_source('library'), 'Ctrl+1')
+        library.addSeparator()
+        self.action(library, 'Add &Files…', self.add_files)
+        self.action(library, 'Add F&older…', self.add_folder)
+        self.add_action = self.action(library, '&Add Selection to Library', self.add_selection)
+        self.add_directory_action = self.action(library, 'Add Current &Directory to Library', self.add_directory)
+        self.remove_action = self.action(library, '&Remove from Library', self.remove_selection, 'Delete')
+        self.removeAction(self.remove_action)
+        self.list.addAction(self.remove_action)
+        self.remove_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+        library.addSeparator()
+        self.action(library, '&Update Library', lambda: self.library_task(lambda: backend.request('update-cache')))
+        self.action(library, '&Clear Library…', self.clear_library)
+        view = self.menubar.addMenu('&View')
+        self.action(view, 'Current &Playlist', lambda: self.show_source('playlist'), 'Ctrl+2')
+        self.action(view, '&Refresh', self.refresh, QKeySequence.StandardKey.Refresh)
+        view.addSeparator()
+        floor = view.addAction('Disco &Floor in XR')
+        floor.setCheckable(True)
+        floor.setChecked(self.floor.isChecked())
+        floor.toggled.connect(self.floor.setChecked)
+        self.floor.toggled.connect(floor.setChecked)
+        for action, icon in [(self.back_action, QStyle.StandardPixmap.SP_ArrowBack),
+                             (self.forward_action, QStyle.StandardPixmap.SP_ArrowForward),
+                             (self.up_action, QStyle.StandardPixmap.SP_ArrowUp)]:
+            action.setIcon(self.style().standardIcon(icon))
+            button = QPushButton()
+            button.setIcon(action.icon())
+            button.setToolTip(f'{action.text().replace("&", "")} ({action.shortcut().toString()})')
+            button.setAccessibleName(action.text().replace('&', ''))
+            button.clicked.connect(action.trigger)
+            action.changed.connect(lambda a=action, b=button: b.setEnabled(a.isEnabled()))
+            self.navigation_layout.addWidget(button)
+        self.navigation_layout.addWidget(self.location, 1)
+
+    def update_actions(self):
+        self.back_action.setEnabled(self.history_position > 0)
+        self.forward_action.setEnabled(self.history_position + 1 < len(self.history))
+        directory = self.model.directory
+        self.up_action.setEnabled(directory is not None and directory.parent != directory)
+        selected = self.list.currentIndex().isValid()
+        self.add_action.setEnabled(selected)
+        self.add_directory_action.setEnabled(directory is not None)
+        self.remove_action.setEnabled(selected and directory is None and self.model.source == 'library')
+
+    def focus_location(self):
+        self.location.setFocus()
+        self.location.selectAll()
+
+    def enter_location(self):
+        self.open_directory(self.location.text())
+
+    def choose_directory(self):
+        directory = QFileDialog.getExistingDirectory(self, 'Open Folder', self.dialog_directory())
+        if directory:
+            self.open_directory(directory)
+
+    def dialog_directory(self):
+        return str(self.model.directory or Path.home())
+
+    def open_files(self):
+        files, _ = QFileDialog.getOpenFileNames(self, 'Open Audio Files', self.dialog_directory())
+        if files:
+            self.tasks.run(lambda: backend.open_files(backend.media_paths(files)), self.operation_done)
+
+    def operation_done(self, value):
+        if isinstance(value, Exception):
+            self.show_error(str(value))
+        else:
+            self.poll()
+
+    def library_task(self, function):
+        def received(value):
+            if isinstance(value, Exception):
+                self.show_error(str(value))
+            else:
+                self.message.setText('Library updated. Folder scans continue in the background.')
+                if self.model.directory is None and self.model.source == 'library':
+                    self.refresh()
+        self.tasks.run(function, received)
+
+    def add_files(self):
+        files, _ = QFileDialog.getOpenFileNames(self, 'Add Files to Library', self.dialog_directory())
+        if files:
+            self.library_task(lambda: backend.add_to_library(files))
+
+    def add_folder(self):
+        directory = QFileDialog.getExistingDirectory(self, 'Add Folder to Library', self.dialog_directory())
+        if directory:
+            self.library_task(lambda: backend.add_to_library([directory]))
+
+    def selected_path(self):
+        index = self.list.currentIndex()
+        return self.model.path(index.row()) if index.isValid() else None
+
+    def add_selection(self):
+        path = self.selected_path()
+        if path:
+            self.library_task(lambda: backend.add_to_library([path]))
+
+    def add_directory(self):
+        directory = self.model.directory
+        if directory is not None:
+            self.library_task(lambda: backend.add_to_library([directory]))
+
+    def remove_selection(self):
+        if not self.remove_action.isEnabled():
+            return
+        path = self.selected_path()
+        if path:
+            self.library_task(lambda: backend.remove_from_library(path))
+
+    def clear_library(self):
+        if QMessageBox.question(self, 'Clear Library',
+                'Remove all tracks from the library? Audio files will stay on disk.',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel) == QMessageBox.StandardButton.Yes:
+            self.library_task(lambda: backend.request('clear -l'))
+
+    def context_menu(self, position):
+        index = self.list.indexAt(position)
+        if not index.isValid():
+            return
+        self.list.setCurrentIndex(index)
+        menu = QMenu(self)
+        menu.addAction('Open' if self.selected_path() and Path(self.selected_path()).is_dir() else 'Play', self.play)
+        menu.addAction('Open Containing Folder', lambda: self.navigate(1))
+        menu.addSeparator()
+        menu.addAction(self.add_action)
+        if self.remove_action.isEnabled():
+            menu.addAction(self.remove_action)
+        menu.exec(self.list.viewport().mapToGlobal(position))
 
     def show_error(self, value):
         self.message.setText(value)
@@ -265,13 +446,43 @@ class Player(QWidget):
         if index == 2:
             directory = Path(self.current.get('file', str(Path.home() / 'Music/track'))).parent
             self.open_directory(directory)
+        elif index == 3:
+            self.open_directory(self.model.directory or Path.home())
         else:
-            self.location.setText(self.source.currentText())
-            self.model.open('playlist' if index == 0 else 'library')
+            self.show_source('playlist' if index == 0 else 'library')
 
     def open_directory(self, directory):
-        self.location.setText(str(directory))
-        self.model.open(directory=Path(directory))
+        directory = Path(directory).expanduser()
+        if not directory.is_absolute():
+            directory = (self.model.directory or Path.home()) / directory
+        directory = Path(os.path.abspath(directory))
+        if not directory.is_dir():
+            self.show_error(f'Directory does not exist: {directory}')
+            return
+        self.show_source('directory', directory)
+
+    def show_source(self, source, directory=None, record=True):
+        location = (source, directory)
+        if record and (self.history_position < 0 or self.history[self.history_position] != location):
+            del self.history[self.history_position + 1:]
+            self.history.append(location)
+            self.history_position = len(self.history) - 1
+        self.source.blockSignals(True)
+        self.source.setCurrentIndex(3 if directory is not None else (0 if source == 'playlist' else 1))
+        self.source.blockSignals(False)
+        self.location.setText(str(directory) if directory is not None else '')
+        self.location.setPlaceholderText('Current playlist' if source == 'playlist' else 'Library')
+        self.model.open(source, directory)
+        self.update_actions()
+
+    def go_history(self, direction):
+        position = self.history_position + direction
+        if 0 <= position < len(self.history):
+            self.history_position = position
+            self.show_source(*self.history[position], record=False)
+
+    def refresh(self):
+        self.show_source(self.model.source, self.model.directory, record=False)
 
     def navigate(self, direction):
         path = self.model.path(self.list.currentIndex().row()) if self.list.currentIndex().isValid() else None
@@ -337,6 +548,10 @@ class Player(QWidget):
             palette.setColor(role,bg)
         for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText):
             palette.setColor(role,fg)
+            palette.setColor(QPalette.ColorGroup.Disabled, role,
+                             QColor('#707985') if light else QColor('#929dab'))
+        palette.setColor(QPalette.ColorRole.PlaceholderText,
+                         QColor('#707985') if light else QColor('#929dab'))
         palette.setColor(QPalette.ColorRole.Highlight,accent)
         palette.setColor(QPalette.ColorRole.HighlightedText,QColor('#101820'))
         self.app.setPalette(palette)

@@ -79,6 +79,22 @@ class PlayerIntegration(unittest.TestCase):
         backend.request('player-stop')
         self.assertEqual(backend.status()['status'],'stopped')
         self.check_qt_navigation()
+        # Remove by escaped filename, independent of the current engine selection.
+        removed = first[0]
+        backend.remove_from_library(removed)
+        self.assertTrue(Path(removed).is_file())
+        self.assertEqual(backend.page('library', 0)[0], 139)
+        with self.assertRaisesRegex(ValueError, 'not in library'):
+            backend.remove_from_library(removed)
+        backend.add_to_library([removed])
+        for _ in range(100):
+            if backend.page('library', 0)[0] == 140:
+                break
+            time.sleep(.05)
+        self.assertEqual(backend.page('library', 0)[0], 140)
+        backend.request('clear -l')
+        self.assertEqual(backend.page('library', 0)[0], 0)
+        self.assertTrue(Path(removed).is_file())
 
     def check_qt_navigation(self):
         try:
@@ -111,6 +127,60 @@ class PlayerIntegration(unittest.TestCase):
                 break
             QTest.qWait(10)
         self.assertEqual(player.model.directory,self.root)
+        self.assertEqual(player.source.currentText(), 'Browse directory')
+        self.assertEqual(player.location.text(), str(self.root))
+        # Alt+arrows operate navigation history even with focus in the track list.
+        child = self.root / 'child'
+        child.mkdir()
+        player.open_directory(child)
+        QTest.keyClick(player.list, Qt.Key.Key_Left, Qt.KeyboardModifier.AltModifier)
+        self.assertEqual(player.model.directory, self.root)
+        QTest.keyClick(player.list, Qt.Key.Key_Right, Qt.KeyboardModifier.AltModifier)
+        self.assertEqual(player.model.directory, child)
+        QTest.keyClick(player.list, Qt.Key.Key_Up, Qt.KeyboardModifier.AltModifier)
+        self.assertEqual(player.model.directory, self.root)
+        player.open_directory(child)
+        player.go_history(-1)
+        player.show_source('library')
+        self.assertFalse(player.forward_action.isEnabled())
+        self.assertFalse(player.add_directory_action.isEnabled())
+        player.open_directory(Path('/'))
+        self.assertFalse(player.up_action.isEnabled())
+        position = player.history_position
+        player.open_directory(self.root / 'missing')
+        self.assertEqual(player.model.directory, Path('/'))
+        self.assertEqual(player.history_position, position)
+        self.assertIn('Directory does not exist', player.message.text())
+        player.show_source('library')
+        for _ in range(100):
+            app.processEvents()
+            if player.model.total == 140 and player.model.cache:
+                break
+            QTest.qWait(10)
+        player.list.setCurrentIndex(player.model.index(0))
+        self.assertTrue(player.remove_action.isEnabled())
+        # Delete edits the location when typing; it removes a track only in the list.
+        player.location.setText('abc')
+        player.location.setCursorPosition(0)
+        player.location.setFocus()
+        QTest.keyClick(player.location, Qt.Key.Key_Delete)
+        self.assertEqual(player.location.text(), 'bc')
+        self.assertEqual(backend.page('library', 0)[0], 140)
+        selected = player.selected_path()
+        player.list.setFocus()
+        QTest.keyClick(player.list, Qt.Key.Key_Delete)
+        for _ in range(100):
+            app.processEvents()
+            if backend.page('library', 0)[0] == 139:
+                break
+            QTest.qWait(10)
+        self.assertEqual(backend.page('library', 0)[0], 139)
+        self.assertTrue(Path(selected).is_file())
+        backend.add_to_library([selected])
+        for _ in range(100):
+            if backend.page('library', 0)[0] == 140:
+                break
+            QTest.qWait(10)
         player.timer.stop()
         player.hide()
         tasks.pool.shutdown(wait=True,cancel_futures=True)
@@ -175,6 +245,10 @@ class DesktopPaths(unittest.TestCase):
         for value in ('file://remote/song.wav', 'https://example.com/song.wav', 'song\nquit.wav'):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 backend.media_paths([value])
+
+    def test_library_paths_reject_command_injection(self):
+        with self.assertRaises(ValueError):
+            backend.add_to_library(['song\nquit.wav'])
 
 if __name__=='__main__':
     unittest.main()

@@ -239,6 +239,21 @@ static void cmuxr_play(const char *arg)
  if (ti) player_play_file(ti);
 }
 
+/* Remove only the named library entry; never touch the underlying audio file. */
+static int cmuxr_remove(struct client *client, const char *arg)
+{
+	struct simple_track *track;
+	const char *filename = unescape(arg);
+
+	list_for_each_entry(track, &lib_editable.head, node) {
+		if (!strcmp(track->info->filename, filename)) {
+			lib_remove(track->info);
+			return send_answer(client->fd, "\n");
+		}
+	}
+	return send_answer(client->fd, "error track not in library\n\n");
+}
+
 static void read_commands(struct client *client)
 {
 	char buf[1024];
@@ -297,7 +312,9 @@ static void read_commands(struct client *client)
 			while (isspace((unsigned char)*line))
 				line++;
 
-			if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-list ", 11)) {
+			if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-remove ", 13)) {
+				ret = cmuxr_remove(client, line + 13);
+			} else if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-list ", 11)) {
                 ret = cmuxr_list(client, line + 11);
             } else if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-directory ", 16)) {
                 if (worker_has_job()) ret = send_answer(client->fd, "busy\n\n");

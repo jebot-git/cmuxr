@@ -84,6 +84,19 @@ The GUI starts the console engine on a pseudoterminal when needed.
 * The source selector opens the current playlist, library or playing directory.
 * Mouse scrolling loads more entries and wraps at the ends.
 
+The Qt menu bar uses **File**, **Playback**, **Go**, **Library**, and **View**
+menus. **File → Open Files…** (`Ctrl+O`) plays files; **Open Folder…**
+(`Ctrl+Shift+O`) browses a folder. The navigation bar provides Back, Forward,
+Up, and an editable directory path. Use `Alt+Left` / `Alt+Right` for history,
+`Alt+Up` for the parent, `Alt+Home` for home, `Ctrl+L` or `Alt+D` to edit the
+location, and `F5` to refresh. **Go** also offers Home, Music, and Playing Directory.
+
+**Library** can add files, recursively add folders, add the selected entry or
+current directory, update metadata and missing tracks, remove the selected
+library track (`Delete`), or clear the library after confirmation. Removing
+entries leaves audio files on disk. Right-click an entry for playback, folder,
+and library actions. `Ctrl+1` opens the library; `Ctrl+2` opens the current playlist.
+
 The compact view defaults to ten visible entries. The model caches at most eight
 128-entry library/playlist pages. Directory playback creates a separate playlist
 containing its direct tracks; existing user playlists are preserved.

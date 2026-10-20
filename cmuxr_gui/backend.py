@@ -109,6 +109,25 @@ def page(source, offset, limit=128):
     return total, rows
 
 
+def add_to_library(paths):
+    # Absolute filenames keep leading dashes out of the engine's option parser.
+    for value in paths:
+        path = str(Path(value).expanduser().absolute())
+        if any(char in path for char in '\r\n\0'):
+            raise ValueError('Library paths cannot contain line breaks or NUL')
+        if not Path(path).exists():
+            raise ValueError(f'Path does not exist: {path}')
+        request('add -l ' + path)
+
+
+def remove_from_library(path):
+    # Identify the actual file, never a row that may have moved after a refresh.
+    escaped = str(path).replace('\\', '\\\\').replace('\n', '\\n')
+    response = request('cmuxr-remove ' + escaped)
+    if any(line.startswith('error') for line in response):
+        raise ValueError('\n'.join(response))
+
+
 def settings():
     try:
         return json.loads((config_root() / 'cmuxr/settings.json').read_text())
