@@ -33,7 +33,7 @@ mpris.o: CFLAGS += $(LIBSYSTEMD_CFLAGS)
 
 # programs {{{
 cmus-y := \
-	ape.o browser.o buffer.o cache.o channelmap.o cmdline.o cmus.o command_mode.o \
+	cmuxr_spectrum.o ape.o browser.o buffer.o cache.o channelmap.o cmdline.o cmus.o command_mode.o \
 	comment.o convert.lo cue.o cue_utils.o debug.o discid.o editable.o expr.o \
 	filters.o format_print.o gbuf.o glob.o help.o history.o http.o id3.o input.o \
 	job.o keys.o keyval.o lib.o load_dir.o locking.o mergesort.o misc.o options.o \

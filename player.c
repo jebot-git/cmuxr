@@ -17,6 +17,7 @@
  */
 
 #include "player.h"
+#include "cmuxr_spectrum.h"
 #include "buffer.h"
 #include "input.h"
 #include "output.h"
@@ -947,6 +948,7 @@ static void *consumer_loop(void *arg)
 				consumer_unlock();
 				break;
 			}
+			cmuxr_spectrum_feed(rpos, rc, buffer_sf);
 			buffer_consume(rc);
 			consumer_pos += rc;
 			space -= rc;

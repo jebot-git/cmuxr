@@ -38,6 +38,9 @@ extern struct editable_shared pl_editable_shared;
 extern char *pl_resume_name;
 extern unsigned long pl_resume_row;
 
+struct track_info *pl_cmuxr_directory(const char *filename);
+struct editable *pl_cmuxr_current(void);
+struct track_info *pl_cmuxr_play(unsigned int row);
 void pl_init(void);
 void pl_init_options(void);
 void pl_exit(void);

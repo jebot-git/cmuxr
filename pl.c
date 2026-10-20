@@ -17,6 +17,8 @@
  */
 
 #include "pl.h"
+#include "lib.h"
+#include "path.h"
 #include "prog.h"
 #include "editable.h"
 #include "options.h"
@@ -39,6 +41,7 @@ struct playlist {
 	struct list_head node;
 
 	char *name;
+	char *cmuxr_directory;
 	struct editable editable;
 	struct rb_root shuffle_root;
 	struct simple_track *cur_track;
@@ -200,6 +203,7 @@ static struct playlist *pl_new(const char *name)
 static void pl_free(struct playlist *pl)
 {
 	editable_clear(&pl->editable);
+	free(pl->cmuxr_directory);
 	free(pl->name);
 	free(pl);
 }
@@ -1047,4 +1051,56 @@ int pl_playing_pl_row(void)
 		n++;
 	}
 	return n;
+}
+
+/* cmuxr: expose the playing playlist without changing the console selection. */
+struct editable *pl_cmuxr_current(void)
+{
+ return &(pl_playing ? pl_playing : pl_visible)->editable;
+}
+struct track_info *pl_cmuxr_play(unsigned int row)
+{
+ struct playlist *pl = pl_playing ? pl_playing : pl_visible;
+ struct list_head *node;
+ list_for_each(node, &pl->editable.head) {
+  if (!row--) return pl_play_track(pl, to_simple_track(node), false);
+ }
+ return NULL;
+}
+
+/* Directory playback uses its own playlist, preserving the user's playlists. */
+struct track_info *pl_cmuxr_directory(const char *filename)
+{
+ char *dir = path_dirname(filename), *name;
+ struct playlist *pl = NULL, *candidate;
+ struct list_head *node; struct simple_track *selected = NULL;
+ list_for_each_entry(candidate, &pl_head, node) {
+  if (candidate->cmuxr_directory && !strcmp(candidate->cmuxr_directory, dir)) {
+   pl = candidate; break;
+  }
+ }
+ if (!pl) {
+  name = pl_create_name("cmuxr directory");
+  if (!name) { free(dir); return NULL; }
+  pl = pl_new(name); free(name);
+  pl->cmuxr_directory = xstrdup(dir);
+  list_add_tail(&pl->node, &pl_head);
+ }
+ if (pl == pl_playing) pl_playing_track = NULL;
+ editable_clear(&pl->editable);
+ list_for_each(node, &lib_editable.head) {
+  struct track_info *ti = to_simple_track(node)->info;
+  char *parent = path_dirname(ti->filename);
+  if (!strcmp(parent, dir)) pl_add_track(pl, ti);
+  free(parent);
+ }
+ free(dir);
+ list_for_each(node, &pl->editable.head) {
+  struct simple_track *track = to_simple_track(node);
+  if (!strcmp(track->info->filename, filename)) { selected = track; break; }
+ }
+ pl_list_win->changed = 1;
+ if (!selected) return NULL;
+ play_library = 0;
+ return pl_play_track(pl, selected, false);
 }

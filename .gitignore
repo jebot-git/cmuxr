@@ -22,3 +22,12 @@ cscope.out
 /cmus.base
 /cmus.def
 /cmus.exp
+
+__pycache__/
+*.pyc
+
+# Local previews, audio excerpts, runtime captures and install staging
+/artifacts/
+/stage/
+
+!.gitattributes

@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Launch the cmuxr floor through DomeD, with standalone OpenXR only as a fallback."""
+import argparse
+import fcntl
+import os
+from pathlib import Path
+import subprocess
+import sys
+import signal
+import time
+
+root = Path(__file__).resolve().parent
+sys.path.insert(0, str(root if (root / 'cmuxr_gui').is_dir() else root.parent / 'share/cmuxr'))
+from cmuxr_gui import backend, xr
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--size', '--floor-size', metavar='WIDTHxDEPTH', help='explicit floor extent in metres; otherwise use runtime bounds')
+parser.add_argument('--server', help='DomeD control service (default: local DomeD port)')
+parser.add_argument('--no-player', action='store_true', help='leave player startup to the caller')
+args = parser.parse_args()
+if args.size:
+    import math
+    try:
+        width, depth = map(float, args.size.split('x'))
+        if not all(math.isfinite(x) and 0 < x <= 100 for x in (width, depth)):
+            raise ValueError()
+    except ValueError:
+        parser.error('floor size must be WIDTHxDEPTH with finite dimensions in (0, 100] metres')
+
+renderer = root / 'cmuxr-floor-renderer'
+if not renderer.is_file():
+    renderer = root.parent / 'DomeD/target/release/dome-xr'
+if not renderer.is_file():
+    parser.exit(1, 'XR renderer is not installed. Reinstall with CMUXR_WITH_XR=1; see man cmuxr-floor.\n')
+runtime = backend.runtime_root()
+runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+lock = open(runtime / 'cmuxr-floor.lock', 'w')
+try:
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    parser.exit(0, 'The cmuxr floor overlay is already running.\n')
+settings = backend.settings()
+settings['floor_enabled'] = True
+if args.size:
+    settings['floor_size_m'] = [width, depth]
+backend.save_settings(settings)
+if not args.no_player:
+    try:
+        backend.status()
+    except OSError:
+        if os.environ.get('WAYLAND_DISPLAY') or os.environ.get('DISPLAY'):
+            subprocess.Popen([str(root / 'cmuxr'), '--tray'], stdin=subprocess.DEVNULL, start_new_session=True)
+child = None
+stopping = False
+
+def stop(signum, frame):
+    global stopping
+    stopping = True
+    if child and child.poll() is None:
+        child.send_signal(signal.SIGINT)
+
+signal.signal(signal.SIGINT, stop)
+signal.signal(signal.SIGTERM, stop)
+try:
+    while not stopping:
+        mode, server = xr.route(args.server)
+        if mode == 'domed-existing':
+            print('Using the active DomeD XR session for the music floor.', flush=True)
+            break
+        arguments = [str(renderer)]
+        if mode == 'domed':
+            arguments += ['--server', server]
+            print('Starting the music floor inside DomeD XR.', flush=True)
+        else:
+            arguments += ['--music-floor-only']
+            print('DomeD is not in use; starting the standalone OpenXR fallback.', flush=True)
+        if args.size:
+            arguments += ['--floor-size', args.size]
+        child = subprocess.Popen(arguments)
+        switch_to_dome = False
+        while child.poll() is None and not stopping:
+            time.sleep(1)
+            if mode == 'fallback':
+                new_mode, _ = xr.route(args.server)
+                if new_mode != 'fallback':
+                    switch_to_dome = True
+                    break
+        if switch_to_dome:
+            child.send_signal(signal.SIGINT)
+            child.wait(timeout=5)
+            child = None
+            continue
+        if not stopping and child.returncode:
+            raise RuntimeError(f'XR renderer exited with status {child.returncode}')
+        break
+except (OSError, RuntimeError, ValueError) as error:
+    print(f'cmuxr-floor: {error}', file=sys.stderr)
+    sys.exit(1)
+finally:
+    if child and child.poll() is None:
+        child.send_signal(signal.SIGINT)
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()

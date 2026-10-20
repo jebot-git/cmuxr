@@ -17,6 +17,10 @@
  */
 
 #include "server.h"
+#include "lib.h"
+#include "pl.h"
+#include "worker.h"
+#include "cmuxr_spectrum.h"
 #include "prog.h"
 #include "command_mode.h"
 #include "search_mode.h"
@@ -89,6 +93,14 @@ static int cmd_status(struct client *client)
 	enum player_status status;
 
 	gbuf_addf(&buf, "status %s\n", player_status_names[player_info.status]);
+	{
+		float bands[16];
+		cmuxr_spectrum_get(bands);
+		gbuf_add_str(&buf, "spectrum");
+		for (i = 0; i < 16; i++)
+			gbuf_addf(&buf, " %.4f", player_info.status == PLAYER_STATUS_PLAYING ? bands[i] : 0.0);
+		gbuf_add_str(&buf, "\n");
+	}
 	ti = player_info.ti;
 	if (ti) {
 		gbuf_addf(&buf, "file %s\n", escape(ti->filename));
@@ -193,6 +205,40 @@ static ssize_t send_answer(int fd, const char *format, ...)
 	return write_all(fd, buf, strlen(buf));
 }
 
+/* Bounded, read-only pages; filenames use the existing remote escaping. */
+static int cmuxr_list(struct client *client, const char *arg)
+{
+ char source[16]; unsigned offset, limit, index = 0; struct list_head *node;
+ struct editable *e; GBUF(buf);
+ if (sscanf(arg, "%15s %u %u", source, &offset, &limit) != 3 ||
+     (strcmp(source, "library") && strcmp(source, "playlist")) || !limit || limit > 256)
+  return write_all(client->fd, "error invalid page\n\n", 20);
+ e = !strcmp(source, "library") ? &lib_editable : pl_cmuxr_current();
+ gbuf_addf(&buf, "total %u\n", e->nr_tracks);
+ list_for_each(node, &e->head) {
+  struct track_info *ti = to_simple_track(node)->info;
+  if (index >= offset && index - offset < limit)
+   gbuf_addf(&buf, "track %u %s\n", index, escape(ti->filename));
+  index++;
+  if (index >= offset && index - offset >= limit) break;
+ }
+ gbuf_add_str(&buf, "\n");
+ int ret = write_all(client->fd, buf.buffer, buf.len); gbuf_free(&buf); return ret;
+}
+static void cmuxr_play(const char *arg)
+{
+ char source[16]; unsigned row; struct track_info *ti = NULL;
+ if (sscanf(arg, "%15s %u", source, &row) != 2) return;
+ if (!strcmp(source, "playlist")) { play_library = 0; ti = pl_cmuxr_play(row); }
+ else if (!strcmp(source, "library")) {
+  struct list_head *node;
+  list_for_each(node, &lib_editable.head) {
+   if (!row--) { play_library = 1; ti = lib_set_track((struct tree_track *)to_simple_track(node)); break; }
+  }
+ }
+ if (ti) player_play_file(ti);
+}
+
 static void read_commands(struct client *client)
 {
 	char buf[1024];
@@ -251,11 +297,33 @@ static void read_commands(struct client *client)
 			while (isspace((unsigned char)*line))
 				line++;
 
-			if (*line == '/') {
+			if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-list ", 11)) {
+                ret = cmuxr_list(client, line + 11);
+            } else if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-directory ", 16)) {
+                if (worker_has_job()) ret = send_answer(client->fd, "busy\n\n");
+                else {
+                    struct track_info *ti = pl_cmuxr_directory(unescape(line + 16));
+                    if (ti) { player_play_file(ti); ret = write_all(client->fd, "\n", 1); }
+                    else ret = send_answer(client->fd, "error track not loaded\n\n");
+                }
+            } else if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-play ", 11)) {
+                cmuxr_play(line + 11); ret = write_all(client->fd, "\n", 1);
+            } else if (*line == '/') {
 				int restricted = 0;
 				line++;
 				search_direction = SEARCH_FORWARD;
-				if (*line == '/') {
+				if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-list ", 11)) {
+                ret = cmuxr_list(client, line + 11);
+            } else if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-directory ", 16)) {
+                if (worker_has_job()) ret = send_answer(client->fd, "busy\n\n");
+                else {
+                    struct track_info *ti = pl_cmuxr_directory(unescape(line + 16));
+                    if (ti) { player_play_file(ti); ret = write_all(client->fd, "\n", 1); }
+                    else ret = send_answer(client->fd, "error track not loaded\n\n");
+                }
+            } else if (addr.sa.sa_family == AF_UNIX && !strncmp(line, "cmuxr-play ", 11)) {
+                cmuxr_play(line + 11); ret = write_all(client->fd, "\n", 1);
+            } else if (*line == '/') {
 					line++;
 					restricted = 1;
 				}

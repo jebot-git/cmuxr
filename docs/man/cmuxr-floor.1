@@ -1,0 +1,99 @@
+.TH CMUXR-FLOOR 1 "2026-10-20" "cmuxr" "User Commands"
+.SH NAME
+cmuxr-floor \- show an audio-reactive floor in an OpenXR session
+.SH SYNOPSIS
+.B cmuxr-floor
+.RB [ "\-\-size WIDTHxDEPTH" ]
+.RB [ "\-\-server URL" ]
+.RB [ \-\-no\-player ]
+.SH DESCRIPTION
+.B cmuxr-floor
+uses the active DomeD XR session when DomeD is running.
+If DomeD has no active XR session, it starts the renderer attached to DomeD's
+control service. A standalone OpenXR overlay alongside the current WiVRn
+application is used only when DomeD is not in use.
+If DomeD is present but its control service is unavailable, startup reports an
+error instead of falling back. A standalone overlay yields to DomeD when it starts.
+It enables the floor preference and starts the cmuxr tray player if no engine
+is available and a graphical session is present.
+Select a track and start playback in the player to animate the floor.
+.PP
+The effect uses sixteen frequency bands from the player's decoded audio.
+A sixteen-by-sixteen grid of coloured tiles is anchored five millimetres above
+the OpenXR STAGE floor. It captures neither microphone nor unrelated system audio.
+The overlay does not receive pointer input.
+Only one instance of this launcher runs per user runtime directory.
+.SH OPTIONS
+.TP
+.BI "\-\-size " WIDTHxDEPTH
+Set floor width and depth in metres. Each dimension must be finite,
+greater than zero and at most 100. The chosen extent is saved as floor_size_m in the frontend settings and is
+also respected by the integrated DomeD renderer. The alias
+.B \-\-floor-size
+is also accepted. Without this option, use the runtime's STAGE bounds.
+Height and anchoring always use STAGE.
+.TP
+.BI "\-\-server " URL
+Select the DomeD control service. The URL must be http://127.0.0.1:PORT.
+An explicit server disables standalone fallback.
+Otherwise DOME_PREVIEW_PORT selects the port, defaulting to 49640.
+.TP
+.B \-\-no\-player
+Do not start a tray player automatically. Use an already-running GUI or console engine.
+.TP
+.BR \-h ", " \-\-help
+Display help and exit.
+.SH RUNTIME REQUIREMENTS
+An active OpenXR runtime, Vulkan, and a valid STAGE reference space are required.
+The renderer prefers XR_EXTX_overlay and transparent alpha or additive blending.
+It does not replace the main application's scene with an opaque background.
+.PP
+Some WiVRn builds return XRT_ERROR_NOT_IMPLEMENTED when queried for room bounds.
+Use an explicit size in that case. LOCAL space is never assumed to be a floor.
+The application-menu launcher uses an explicit 3 by 3 metre extent.
+.PP
+The effect disappears when disabled, paused, stopped, or when spectrum data is
+more than 500 milliseconds old. The renderer can remain running with no visible
+floor while playback is stopped. It requires one additional composition layer.
+.SH INSTALLATION
+The optional renderer is built from a compatible DomeD checkout with the supplied
+music-floor integration patch. To stage the system application and renderer:
+.nf
+CMUXR_WITH_XR=1 CMUXR_DOMED_SOURCE=../DomeD \
+  DESTDIR="$PWD/stage" ./scripts/install-cmuxr.sh /usr/local
+.fi
+.PP
+Install the staged tree with administrator privileges after reviewing it.
+The player, frontend and manual pages can be installed without the XR component.
+.SH ENVIRONMENT
+.TP
+.B DOME_PREVIEW_PORT
+Select the local DomeD control port, defaulting to 49640.
+.TP
+.B XR_RUNTIME_JSON
+Override the OpenXR runtime manifest for this process.
+.TP
+.B XDG_RUNTIME_DIR
+Directory containing cmuxr-floor.json and the launcher instance lock.
+.TP
+.B CMUS_SOCKET
+Override the player control socket used to detect a running engine.
+.SH CONTROL
+Pause the player to suspend the visible floor.
+Run
+.B cmuxr --floor off
+to disable it persistently, or use the tray switch.
+Interrupt the renderer with Ctrl+C when it was started from a terminal.
+The currently running WiVRn session remains active.
+.SH EXAMPLES
+.nf
+cmuxr-floor --size 3x3
+cmuxr-floor --no-player --size 4x2.5
+cmuxr --floor off
+.fi
+.SH SEE ALSO
+.BR cmuxr (1),
+.BR cmus (1)
+.SH LICENSE
+The cmuxr launcher is GPL version 2 or later. The DomeD renderer is distributed
+under DomeD's MIT license; its installed license is in share/cmuxr/licenses.

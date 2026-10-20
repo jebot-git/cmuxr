@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""cmuxr launcher: console by default in terminals, Qt6 otherwise."""
+import argparse
+import fcntl
+import os
+from pathlib import Path
+import pty
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+root = Path(__file__).resolve().parent
+if (root / 'cmuxr_gui').is_dir():
+    sys.path.insert(0, str(root))
+else:
+    sys.path.insert(0, str(root.parent / 'share/cmuxr'))
+from cmuxr_gui import backend
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--console', action='store_true', help='console playback; tray companion when available')
+parser.add_argument('--no-gui', action='store_true', help='disable optional Qt6 companion')
+parser.add_argument('--gui', action='store_true', help='open the Qt6 player')
+parser.add_argument('--tray', action='store_true', help='start in the tray')
+parser.add_argument('--companion', action='store_true', help=argparse.SUPPRESS)
+parser.add_argument('--floor', choices=['on','off'], help='persist the XR floor preference')
+args, core_args = parser.parse_known_args()
+if args.floor:
+    settings = backend.settings()
+    settings['floor_enabled'] = args.floor == 'on'
+    backend.save_settings(settings)
+    if not (args.gui or args.tray or args.console or core_args):
+        sys.exit(0)
+
+runtime = backend.runtime_root()
+runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+os.environ.setdefault('CMUS_SOCKET', str(runtime / 'cmuxr-socket'))
+os.environ.setdefault('CMUS_HOME', str(backend.config_root() / 'cmuxr'))
+Path(os.environ['CMUS_HOME']).mkdir(parents=True, exist_ok=True)
+core = root / 'cmus'
+if not core.is_file():
+    core = Path(shutil.which('cmuxr-core') or str(root / 'cmuxr-core'))
+graphical = bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+console = args.console or args.no_gui or (not args.gui and not args.tray and sys.stdin.isatty()) or not graphical
+if args.companion:
+    console = False
+
+stop = threading.Event()
+bridge_thread = threading.Thread(target=backend.bridge,args=(stop,),daemon=True)
+# Only one telemetry publisher per user session.
+bridge_lock = open(runtime / 'cmuxr-bridge.lock','w')
+try:
+    fcntl.flock(bridge_lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+    bridge_thread.start()
+except BlockingIOError:
+    pass
+
+process, companion, master = None, None, None
+
+def terminate(signum, frame):
+    widgets = sys.modules.get('PySide6.QtWidgets')
+    app = widgets.QApplication.instance() if widgets else None
+    if app:
+        app.quit()
+    else:
+        raise SystemExit(128 + signum)
+
+signal.signal(signal.SIGTERM, terminate)
+try:
+    if console:
+        if graphical and not args.no_gui:
+            companion = subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'--companion','--tray'], stdin=subprocess.DEVNULL)
+        process = subprocess.Popen([str(core),*core_args])
+        sys.exit(process.wait())
+    else:
+        # One frontend; a repeated desktop launch raises its existing list.
+        import socket
+        control_path = str(runtime / 'cmuxr-gui-socket')
+        gui_lock = open(runtime / 'cmuxr-gui.lock','w')
+        try:
+            fcntl.flock(gui_lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            with socket.socket(socket.AF_UNIX) as client:
+                client.connect(control_path)
+                client.sendall(b'show')
+            sys.exit(0)
+        try:
+            backend.status()
+        except OSError:
+            if args.companion:
+                for _ in range(30):
+                    time.sleep(.1)
+                    try:
+                        backend.status()
+                        break
+                    except OSError:
+                        continue
+            else:
+                master, slave = pty.openpty()
+                env = dict(os.environ, TERM='xterm-256color')
+                process = subprocess.Popen([str(core),*core_args],stdin=slave,stdout=slave,stderr=slave,env=env,start_new_session=True)
+                os.close(slave)
+                def drain():
+                    while not stop.is_set():
+                        try:
+                            if select.select([master],[],[],.2)[0]:
+                                os.read(master,65536)
+                        except OSError:
+                            break
+                threading.Thread(target=drain,daemon=True).start()
+        from cmuxr_gui.app import run
+        # Wake an existing frontend through a private Unix socket.
+        Path(control_path).unlink(missing_ok=True)
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(control_path)
+        os.chmod(control_path,0o600)
+        listener.listen(2)
+        listener.setblocking(False)
+        sys.exit(run(tray_only=args.tray, listener=listener))
+except ImportError as error:
+    print(f'Qt6 frontend requires PySide6: {error}. Use cmuxr --no-gui for console playback.',file=sys.stderr)
+    sys.exit(1)
+except KeyboardInterrupt:
+    sys.exit(130)
+finally:
+    stop.set()
+    if companion:
+        companion.terminate()
+    if process and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+    if bridge_thread.is_alive():
+        bridge_thread.join(timeout=1)
+    if master is not None:
+        os.close(master)

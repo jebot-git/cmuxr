@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=cmuxr
+Comment=Console and Qt6 music player for DomeD
+Exec=cmuxr --gui
+Icon=multimedia-player
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=cmuxr

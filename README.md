@@ -1,3 +1,9 @@
+# cmuxr
+
+DomeD console / Qt6 / XR music player fork. See [cmuxr build, controls and integration](README.cmuxr.md).
+
+---
+
 # cmus — C\* Music Player
 
 https://cmus.github.io/

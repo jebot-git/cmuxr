@@ -1,0 +1,118 @@
+.TH CMUXR 1 "2026-10-20" "cmuxr" "User Commands"
+.SH NAME
+cmuxr \- console and Qt6 music player for DomeD
+.SH SYNOPSIS
+.B cmuxr
+.RB [ \-\-console | \-\-gui | \-\-tray ]
+.RB [ \-\-no\-gui ]
+.RB [ "\-\-floor on|off" ]
+.RI [ cmus-options ]
+.SH DESCRIPTION
+.B cmuxr
+retains the cmus ncurses player and adds an optional Qt6 interface,
+system tray controls, and spectrum data for an OpenXR disco floor.
+In an interactive terminal it starts the console interface; in a graphical
+session without a terminal it opens the Qt6 player.
+Without a display server it uses the console.
+Qt6 is not required for console operation.
+.SH OPTIONS
+.TP
+.B \-\-console
+Start the console interface, with a tray companion when a graphical session is available.
+.TP
+.B \-\-no\-gui
+Start only the console interface, without importing Qt6.
+.TP
+.B \-\-gui
+Open the Qt6 player. Start the console engine on a pseudoterminal if needed.
+A repeated GUI launch raises the existing window.
+.TP
+.B \-\-tray
+Start with the Qt6 window hidden when a tray is available.
+Without a tray, open the window.
+.TP
+.BI "\-\-floor " on|off
+Persistently enable or disable the XR floor effect.
+When given without a launch option, save the preference and exit.
+This preference does not itself start an XR renderer; use
+.BR cmuxr-floor (1).
+.TP
+.BR \-h ", " \-\-help
+Display launcher help and exit.
+.PP
+Other options are passed to the cmus engine. See
+.BR cmus (1).
+.SH GRAPHICAL CONTROLS
+The tray menu provides Play / Pause, Stop, List, the XR floor switch, and Quit.
+Clicking the tray icon opens the list. Closing the window hides it when a tray
+is available; Quit stops the player.
+.PP
+Up and Down select tracks and wrap at the ends.
+Space pauses or resumes. Enter plays the selection.
+Right enters a directory or a selected track's directory.
+Left opens the parent directory, or the library from a playlist.
+The source selector opens the current playlist, library, or playing directory.
+Mouse scrolling loads more entries and wraps at the ends.
+.PP
+The view defaults to ten visible entries and caches at most eight pages of
+128 library or playlist entries. Directory playback creates a separate playlist
+containing the directory's direct tracks, preserving existing user playlists.
+.SH APPEARANCE
+The Qt6 interface follows DomeD's light or dark scheme, accent, font, font size,
+and chrome opacity. Appearance changes are polled while the player runs.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/cmuxr/
+Player configuration and library. Defaults to
+.IR ~/.config/cmuxr/ .
+.B CMUS_HOME
+can override the engine configuration directory.
+.TP
+.I $XDG_CONFIG_HOME/cmuxr/settings.json
+Frontend settings. The boolean
+.B floor_enabled
+controls the effect; the integer
+.B visible_entries
+sets the compact view height from 4 to 20 entries.
+.TP
+.I $XDG_CONFIG_HOME/dome/appearance.json
+DomeD appearance settings.
+.TP
+.I $XDG_RUNTIME_DIR/cmuxr-socket
+Engine control socket. Override with
+.BR CMUS_SOCKET .
+.TP
+.I $XDG_RUNTIME_DIR/cmuxr-floor.json
+Versioned spectrum frames, updated up to 20 times per second.
+The bridge also runs for console-only sessions.
+.PP
+Without XDG_RUNTIME_DIR, console runtime files use a private per-user directory
+under /tmp. The XR renderer requires XDG_RUNTIME_DIR for spectrum transport.
+.SH ENVIRONMENT
+.TP
+.B DISPLAY, WAYLAND_DISPLAY
+Determine graphical session availability.
+.TP
+.B CMUS_HOME, CMUS_SOCKET
+Override the engine configuration directory and Unix control socket.
+.TP
+.B XDG_CONFIG_HOME, XDG_RUNTIME_DIR
+Select configuration and runtime directories.
+.TP
+.B PULSE_SINK
+Select a PulseAudio or PipeWire-Pulse output when using the ALSA pulse device.
+.SH EXAMPLES
+.nf
+cmuxr --console
+cmuxr --no-gui
+cmuxr --gui
+cmuxr --floor off
+cmuxr-floor --size 3x3
+.fi
+.SH SEE ALSO
+.BR cmuxr-floor (1),
+.BR cmus (1),
+.BR cmus-remote (1),
+.BR cmus-tutorial (7)
+.SH LICENSE
+GPL version 2 or later. The cmus authors retain their upstream copyrights.
