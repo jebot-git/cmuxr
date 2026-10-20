@@ -1,6 +1,8 @@
 # cmuxr
 
 DomeD console / Qt6 / XR music player fork. See [cmuxr build, controls and integration](README.cmuxr.md).
+Command manuals: [cmuxr.1](docs/man/cmuxr.1) and
+[cmuxr-floor.1](docs/man/cmuxr-floor.1).
 
 ---
 

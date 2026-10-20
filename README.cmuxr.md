@@ -143,3 +143,20 @@ loopback validation. DomeD tests cover stale/disabled/paused frames and floor ti
 The Qt6 frontend has been checked offscreen. A running WiVRn session accepted the
 floor as a focused transparent overlay with headset audio and a 3 by 3 metre
 extent. Physical room alignment still depends on the runtime's STAGE calibration.
+
+## Command manuals and related projects
+
+Manuals: [cmuxr.1](docs/man/cmuxr.1) and
+[cmuxr-floor.1](docs/man/cmuxr-floor.1). After installation, use `man cmuxr`
+and `man cmuxr-floor`.
+
+Part of the [de-xr desktop](https://github.com/topics/de-xr):
+[DomeD](https://github.com/jebot-git/DomeD) hosts the desktop/session and integrated floor,
+[Ghostty XR](https://github.com/jebot-git/ghostty-xr) provides the terminal,
+[mpvr](https://github.com/jebot-git/mpvr) video playback,
+[fsvr](https://github.com/jebot-git/fsv-xr) file browsing,
+[qimgvr](https://github.com/jebot-git/qimgvr) image viewing,
+[Arc SBS](https://github.com/jebot-git/arc-sbs) depth conversion, and
+[LightXR](https://github.com/jebot-git/LightXR) the optional login manager.
+Each application has its own dependencies and can be used independently where
+its selected backend permits.
