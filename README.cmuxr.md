@@ -35,6 +35,12 @@ is supported. It installs `cmuxr-core` without replacing the `cmus` executable.
 Core plugins, themes and upstream manuals use cmus locations beneath the prefix.
 
 The application menu contains **cmuxr** and, with XR enabled, **cmuxr XR Floor**.
+cmuxr is also available in DomeD's **Default Applications** choices for MP3,
+FLAC and Ogg audio. Select it there to use it for opening music files.
+The desktop entry registers WAV, Opus, AAC and M4A audio as well; playback
+requires the corresponding decoder in the installed core. Existing defaults
+are preserved. Opening audio starts playback in the current player, or starts
+a player if needed; additional selected files are queued.
 Manual pages are installed for `man cmuxr` and `man cmuxr-floor`.
 User configuration and music libraries remain separate from installed files.
 
@@ -44,6 +50,7 @@ User configuration and music libraries remain separate from installed files.
 cmuxr --console          # terminal player with tray when available
 cmuxr --no-gui           # console only; no Qt imports
 cmuxr --gui              # Qt6 player
+cmuxr --gui --open ~/Music/song.flac  # also accepts local file:// URIs
 cmuxr --tray             # hidden initially when a tray is available
 cmuxr-floor --size 3x3   # DomeD first; standalone WiVRn fallback if DomeD is absent
 cmuxr --floor off        # disable the visible effect persistently

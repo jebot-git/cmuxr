@@ -4,6 +4,44 @@ import os
 from pathlib import Path
 import socket
 import time
+from urllib.parse import urlsplit, unquote
+
+
+def media_paths(values):
+    """Decode desktop file URIs before sending literal paths to the engine."""
+    paths = []
+    for value in values:
+        if value.startswith('file:'):
+            uri = urlsplit(value)
+            if uri.netloc not in ('', 'localhost') or uri.query or uri.fragment:
+                raise ValueError('Only local file URIs are supported')
+            value = unquote(uri.path)
+        elif '://' in value:
+            raise ValueError('Open a local audio file')
+        path = str(Path(value).expanduser().absolute())
+        if any(char in path for char in '\r\n\0'):
+            raise ValueError('Audio filenames cannot contain line breaks or NUL')
+        if not Path(path).is_file():
+            raise ValueError(f'Audio file does not exist: {path}')
+        paths.append(path)
+    return paths
+
+
+def open_files(paths, timeout=5):
+    """Play the first selection and queue the rest, also during engine startup."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            status()
+            break
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Player did not start')
+            time.sleep(.05)
+    for path in paths[1:]:
+        request('add -q ' + path)
+    if paths:
+        request('player-play ' + paths[0])
 
 
 def config_root():

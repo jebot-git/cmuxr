@@ -7,6 +7,7 @@ cmuxr \- console and Qt6 music player for DomeD
 .RB [ \-\-no\-gui ]
 .RB [ "\-\-floor on|off" ]
 .RI [ cmus-options ]
+.RI [ "--open FILE..." ]
 .SH DESCRIPTION
 .B cmuxr
 retains the cmus ncurses player and adds an optional Qt6 interface,
@@ -36,6 +37,13 @@ Persistently enable or disable the XR floor effect.
 When given without a launch option, save the preference and exit.
 This preference does not itself start an XR renderer; use
 .BR cmuxr-floor (1).
+.TP
+.BI "\-\-open " FILE...
+Play local audio files or file URIs. Play the first selection and queue
+additional files. Reuse an existing player and raise its graphical window.
+The desktop entry advertises supported audio formats for DomeD's Default
+Applications chooser. Selecting cmuxr there enables opening music files;
+installation preserves existing defaults. Decoding support depends on the core plugins.
 .TP
 .BR \-h ", " \-\-help
 Display launcher help and exit.

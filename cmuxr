@@ -28,12 +28,17 @@ parser.add_argument('--gui', action='store_true', help='open the Qt6 player')
 parser.add_argument('--tray', action='store_true', help='start in the tray')
 parser.add_argument('--companion', action='store_true', help=argparse.SUPPRESS)
 parser.add_argument('--floor', choices=['on','off'], help='persist the XR floor preference')
+parser.add_argument('--open', nargs='*', default=[], metavar='FILE', help='play local audio files or file URIs; queue additional selections')
 args, core_args = parser.parse_known_args()
+try:
+    files = backend.media_paths(args.open)
+except ValueError as error:
+    parser.error(str(error))
 if args.floor:
     settings = backend.settings()
     settings['floor_enabled'] = args.floor == 'on'
     backend.save_settings(settings)
-    if not (args.gui or args.tray or args.console or core_args):
+    if not (args.gui or args.tray or args.console or core_args or files):
         sys.exit(0)
 
 runtime = backend.runtime_root()
@@ -75,6 +80,8 @@ try:
         if graphical and not args.no_gui:
             companion = subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'--companion','--tray'], stdin=subprocess.DEVNULL)
         process = subprocess.Popen([str(core),*core_args])
+        if files:
+            backend.open_files(files)
         sys.exit(process.wait())
     else:
         # One frontend; a repeated desktop launch raises its existing list.
@@ -84,6 +91,8 @@ try:
         try:
             fcntl.flock(gui_lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            if files:
+                backend.open_files(files)
             with socket.socket(socket.AF_UNIX) as client:
                 client.connect(control_path)
                 client.sendall(b'show')
@@ -112,6 +121,8 @@ try:
                         except OSError:
                             break
                 threading.Thread(target=drain,daemon=True).start()
+        if files:
+            backend.open_files(files)
         from cmuxr_gui.app import run
         # Wake an existing frontend through a private Unix socket.
         Path(control_path).unlink(missing_ok=True)
@@ -123,6 +134,9 @@ try:
         sys.exit(run(tray_only=args.tray, listener=listener))
 except ImportError as error:
     print(f'Qt6 frontend requires PySide6: {error}. Use cmuxr --no-gui for console playback.',file=sys.stderr)
+    sys.exit(1)
+except (OSError, ValueError, TimeoutError) as error:
+    print(f'cmuxr: {error}', file=sys.stderr)
     sys.exit(1)
 except KeyboardInterrupt:
     sys.exit(130)

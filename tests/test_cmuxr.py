@@ -122,5 +122,59 @@ class PlayerIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             backend.request('status\nquit')
 
+    def test_desktop_open_and_repeated_launch(self):
+        try:
+            import PySide6
+        except ImportError:
+            self.skipTest('Qt6 is optional')
+        # Exercise cold engine startup, then hand a second file to the same GUI.
+        self.proc.terminate()
+        self.proc.wait(timeout=5)
+        paths = [self.root / name for name in ('first ž # \\ song.wav', 'second song.wav')]
+        for path in paths:
+            with wave.open(str(path), 'wb') as out:
+                out.setparams((1, 2, 44100, 0, 'NONE', 'not compressed'))
+                out.writeframes(b'\0\0' * 44100 * 10)
+        env = dict(self.env, XDG_RUNTIME_DIR=str(self.root), XDG_CONFIG_HOME=str(self.root),
+                   QT_QPA_PLATFORM='offscreen', DISPLAY=':cmuxr-test')
+        gui = subprocess.Popen([str(ROOT/'cmuxr'), '--gui', '--open', paths[0].as_uri()],
+                               env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        try:
+            for _ in range(100):
+                if (self.root/'cmuxr-gui-socket').exists():
+                    break
+                if gui.poll() is not None:
+                    self.fail(gui.stderr.read().decode())
+                time.sleep(.05)
+            self.assertEqual(backend.status()['file'], str(paths[0]))
+            second = subprocess.run([str(ROOT/'cmuxr'), '--gui', '--open', str(paths[1])],
+                                    env=env, capture_output=True, timeout=10)
+            self.assertEqual(second.returncode, 0, second.stderr.decode())
+            self.assertIsNone(gui.poll())
+            self.assertEqual(backend.status()['file'], str(paths[1]))
+        finally:
+            gui.terminate()
+            gui.communicate(timeout=10)
+
+    def test_desktop_multiple_files(self):
+        paths = []
+        for name in ('first.wav', 'queued.wav'):
+            path = self.root/name
+            with wave.open(str(path), 'wb') as out:
+                out.setparams((1, 2, 44100, 0, 'NONE', 'not compressed'))
+                out.writeframes(b'\0\0' * 44100 * 10)
+            paths.append(str(path))
+        backend.open_files(backend.media_paths(paths))
+        self.assertEqual(backend.status()['file'], paths[0])
+        backend.request('player-next')
+        self.assertEqual(backend.status()['file'], paths[1])
+
+
+class DesktopPaths(unittest.TestCase):
+    def test_rejects_remote_uris_and_command_injection(self):
+        for value in ('file://remote/song.wav', 'https://example.com/song.wav', 'song\nquit.wav'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                backend.media_paths([value])
+
 if __name__=='__main__':
     unittest.main()
