@@ -70,7 +70,8 @@ def terminate(signum, frame):
     widgets = sys.modules.get('PySide6.QtWidgets')
     app = widgets.QApplication.instance() if widgets else None
     if app:
-        app.quit()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, app.quit)
     else:
         raise SystemExit(128 + signum)
 
