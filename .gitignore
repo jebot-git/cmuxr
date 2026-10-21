@@ -31,3 +31,7 @@ __pycache__/
 /stage/
 
 !.gitattributes
+
+# Isolated FLTK experiment build outputs
+/build-fltk/
+/fltk-*.log
