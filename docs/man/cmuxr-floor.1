@@ -1,4 +1,4 @@
-.TH CMUXR-FLOOR 1 "2026-10-20" "cmuxr" "User Commands"
+.TH CMUXR-FLOOR 1 "2026-10-21" "cmuxr" "User Commands"
 .SH NAME
 cmuxr-floor \- show an audio-reactive floor in an OpenXR session
 .SH SYNOPSIS
@@ -14,7 +14,8 @@ control service. A standalone OpenXR overlay alongside the current WiVRn
 application is used only when DomeD is not in use.
 If DomeD is present but its control service is unavailable, startup reports an
 error instead of falling back. A standalone overlay yields to DomeD when it starts.
-It enables the floor preference and starts the cmuxr tray player if no engine
+It enables the floor preference and starts the selected cmuxr frontend in tray
+mode if no engine
 is available and a graphical session is present.
 Select a track and start playback in the player to animate the floor.
 .PP
@@ -64,7 +65,10 @@ CMUXR_WITH_XR=1 CMUXR_DOMED_SOURCE=../DomeD \
 .fi
 .PP
 Install the staged tree with administrator privileges after reviewing it.
-The player, frontend and manual pages can be installed without the XR component.
+The core, launcher and player manual can be installed without the XR component.
+The default FLTK GUI also needs the separate native CMake build/stage described
+in cmuxr(1); the shell installer does not build cmuxr-fltk.
+DE_XR_TOOLKIT=Qt6 explicitly selects the retained PySide6 frontend.
 .SH ENVIRONMENT
 .TP
 .B DOME_PREVIEW_PORT

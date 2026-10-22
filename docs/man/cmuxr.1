@@ -1,133 +1,133 @@
-.TH CMUXR 1 "2026-10-20" "cmuxr" "User Commands"
+.TH CMUXR 1 "2026-10-21" "de-xr" "User Commands"
 .SH NAME
-cmuxr \- console and Qt6 music player for DomeD
+cmuxr \- console and native graphical music player for DomeD
 .SH SYNOPSIS
-.B cmuxr
-.RB [ \-\-console | \-\-gui | \-\-tray ]
-.RB [ \-\-no\-gui ]
-.RB [ "\-\-floor on|off" ]
-.RI [ cmus-options ]
-.RI [ "--open FILE..." ]
+.nf
+cmuxr [--console|--gui|--tray] [--no-gui] [--floor on|off]
+      [CMUS-OPTIONS] [--open FILE...]
+.fi
 .SH DESCRIPTION
-.B cmuxr
-retains the cmus ncurses player and adds an optional Qt6 interface,
-system tray controls, and spectrum data for an OpenXR disco floor.
-In an interactive terminal it starts the console interface; in a graphical
-session without a terminal it opens the Qt6 player.
-Without a display server it uses the console.
-Qt6 is not required for console operation.
+cmuxr retains the cmus ncurses/audio engine and defaults to a patched FLTK 1.4.5
+graphical frontend. Qt6/PySide6 is retained as an explicit runtime opt-in:
+.nf
+DE_XR_TOOLKIT=Qt6 cmuxr --gui
+.fi
+.PP
+An interactive terminal defaults to console playback; a graphical nonterminal
+launch opens FLTK. Without a display server, the console is used.
+Qt6 is not needed for FLTK or console playback. Some launcher help descriptions
+still say Qt6 for --gui; the toolkit selection above determines the actual frontend.
+Decoded-audio spectrum data drives the optional XR floor without microphone capture.
 .SH OPTIONS
 .TP
 .B \-\-console
-Start the console interface, with a tray companion when a graphical session is available.
+Start the console, with a graphical companion when available.
 .TP
 .B \-\-no\-gui
-Start only the console interface, without importing Qt6.
+Use the console without a graphical companion.
 .TP
 .B \-\-gui
-Open the Qt6 player. Start the console engine on a pseudoterminal if needed.
-A repeated GUI launch raises the existing window.
+Open the selected graphical frontend. Start the console engine on a
+pseudoterminal if needed. Repeated GUI launches wake the existing frontend.
 .TP
 .B \-\-tray
-Start with the Qt6 window hidden when a tray is available.
-Without a tray, open the window.
+Start hidden when a tray watcher is available; otherwise show a normal window.
 .TP
 .BI "\-\-floor " on|off
-Persistently enable or disable the XR floor effect.
-When given without a launch option, save the preference and exit.
-This preference does not itself start an XR renderer; use
-.BR cmuxr-floor (1).
+Save the floor preference. Given alone, save and exit; this does not start a
+renderer. Use cmuxr-floor for that purpose.
 .TP
 .BI "\-\-open " FILE...
-Play local audio files or file URIs. Play the first selection and queue
-additional files. Reuse an existing player and raise its graphical window.
-The desktop entry advertises supported audio formats for DomeD's Default
-Applications chooser. Selecting cmuxr there enables opening music files;
-installation preserves existing defaults. Decoding support depends on the core plugins.
+Play local files or file URIs. Play the first and queue additional selections,
+reusing an engine when possible. Formats depend on installed decoder plugins.
 .TP
-.BR \-h ", " \-\-help
-Display launcher help and exit.
+.B \-h, \-\-help
+Print launcher help and exit.
 .PP
-Other options are passed to the cmus engine. See
-.BR cmus (1).
-.SH GRAPHICAL CONTROLS
-The tray menu provides Play / Pause, Stop, List, the XR floor switch, and Quit.
-Clicking the tray icon opens the list. Closing the window hides it when a tray
-is available; Quit stops the player.
+Other options are forwarded to the cmus engine; see cmus(1).
+.SH FLTK CONTROLS
+The native form has paged/searchable Playlist, Library and Queue sources,
+asynchronous core requests, spectrum, seek and volume controls, command menus
+and a StatusNotifierItem tray. Close hides the window if a tray watcher exists;
+tray activation reopens it. Without a watcher, tray startup shows a window.
+File choosers are native FLTK.
 .PP
-Up and Down select tracks and wrap at the ends.
-Space pauses or resumes. Enter plays the selection.
-Right enters a directory or a selected track's directory.
-Left opens the parent directory, or the library from a playlist.
-The source selector opens the current playlist, library, or playing directory.
-Mouse scrolling loads more entries and wraps at the ends.
+Enter plays the selection; Space plays or pauses. Ctrl+Left/Right select the
+previous/next track; Alt+Left/Right seek. Ctrl+O adds files; Ctrl+E queues the
+selection. Delete removes a library entry, leaving the audio file on disk.
+F5 refreshes, plus/minus changes volume and Ctrl+Q quits.
 .PP
-The menu bar provides File, Playback, Go, Library, and View menus.
-File / Open Files (Ctrl+O) plays files; Open Folder (Ctrl+Shift+O) browses a folder.
-The navigation bar provides Back, Forward, Up, and an editable directory path.
-Alt+Left and Alt+Right navigate history; Alt+Up opens the parent;
-Alt+Home opens home. Ctrl+L or Alt+D focuses the path, and F5 refreshes.
-The Go menu also opens Home, Music, and Playing Directory.
-.PP
-The Library menu adds files or folders recursively, adds the selected entry or
-current directory, updates metadata and missing tracks, removes a selected
-library track (Delete), or clears the library after confirmation.
-Removing entries leaves audio files on disk.
-Right-click an entry for playback, folder, and library actions.
-Ctrl+1 opens the library; Ctrl+2 opens the current playlist.
-.PP
-The view defaults to ten visible entries and caches at most eight pages of
-128 library or playlist entries. Directory playback creates a separate playlist
-containing the directory's direct tracks, preserving existing user playlists.
-.SH APPEARANCE
-The Qt6 interface follows DomeD's light or dark scheme, accent, font, font size,
-and chrome opacity. Appearance changes are polled while the player runs.
+DomeD supplies XR pointer/keyboard input to the ordinary Wayland surface.
+Application menus are exported through DBusMenu/KDE AppMenu where supported.
+Live DomeD palette and bitmap-font updates require the patched FLTK runtime.
+.SH OPTIONAL QT FRONTEND
+DE_XR_TOOLKIT=Qt6 selects the retained PySide6 interface. It has folder/history
+navigation, File/Playback/Go/Library/View menus and its own shortcuts, including
+Ctrl+Shift+O for a folder, Ctrl+L for the path and Ctrl+1/2 for library/playlist.
+Its visible_entries compact-view preference is not a FLTK parity claim.
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/cmuxr/
-Player configuration and library. Defaults to
-.IR ~/.config/cmuxr/ .
-.B CMUS_HOME
-can override the engine configuration directory.
+Engine configuration/library; default ~/.config/cmuxr. CMUS_HOME overrides
+this engine directory.
 .TP
 .I $XDG_CONFIG_HOME/cmuxr/settings.json
-Frontend settings. The boolean
-.B floor_enabled
-controls the effect; the integer
-.B visible_entries
-sets the compact view height from 4 to 20 entries.
+Frontend preferences, including floor_enabled and floor_size_m.
+The Qt frontend additionally uses visible_entries (4 to 20).
 .TP
 .I $XDG_CONFIG_HOME/dome/appearance.json
-DomeD appearance settings.
+DomeD palette/font settings.
 .TP
 .I $XDG_RUNTIME_DIR/cmuxr-socket
-Engine control socket. Override with
-.BR CMUS_SOCKET .
+Engine control socket, overridden by CMUS_SOCKET.
 .TP
 .I $XDG_RUNTIME_DIR/cmuxr-floor.json
-Versioned spectrum frames, updated up to 20 times per second.
-The bridge also runs for console-only sessions.
+Expiring decoded-audio spectrum frames, published up to 20 Hz even in console mode.
 .PP
-Without XDG_RUNTIME_DIR, console runtime files use a private per-user directory
-under /tmp. The XR renderer requires XDG_RUNTIME_DIR for spectrum transport.
+Without XDG_RUNTIME_DIR, console runtime files use a private per-user /tmp
+directory. XR spectrum transport requires XDG_RUNTIME_DIR.
 .SH ENVIRONMENT
+.TP
+.B DE_XR_TOOLKIT
+FLTK by default; Qt6 explicitly opts into PySide6. This is a launcher setting,
+not a CMake selector for cmuxr's standalone FLTK subdirectory.
+.TP
+.B CMUXR_FLTK_BINARY
+Override the native executable. Otherwise the source build-fltk/cmuxr-fltk
+is used if present, then cmuxr-fltk on PATH.
+.TP
+.B DE_XR_FLTK_PREFIX
+Select the matching patched FLTK runtime prefix; its lib directory is prepended
+to LD_LIBRARY_PATH. Set this when automatic deployment-prefix discovery fails.
+.TP
+.B CMUS_HOME, CMUS_SOCKET
+Override engine configuration and its Unix socket.
 .TP
 .B DISPLAY, WAYLAND_DISPLAY
 Determine graphical session availability.
 .TP
-.B CMUS_HOME, CMUS_SOCKET
-Override the engine configuration directory and Unix control socket.
-.TP
-.B XDG_CONFIG_HOME, XDG_RUNTIME_DIR
-Select configuration and runtime directories.
-.TP
 .B PULSE_SINK
-Select a PulseAudio or PipeWire-Pulse output when using the ALSA pulse device.
+Select PulseAudio/PipeWire-Pulse output when the engine uses the ALSA pulse device.
+.SH INSTALLATION
+The shell installer builds/stages the core, launcher, Python modules and manual.
+The default GUI needs an additional native build/stage:
+.nf
+cmake -S fltk -B build-fltk -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/path/to/patched-fltk-1.4.5
+cmake --build build-fltk --parallel
+DESTDIR="$PWD/stage" cmake --install build-fltk --prefix /usr/local
+.fi
+.PP
+Build as a regular user and review staged files before privileged installation.
+The FLTK GUI requires its patched 1.4.5 shared runtime. Full real-library,
+installation/relocation, accessibility/IME and bitmap shaping coverage remains
+incomplete; simulated HMD testing does not validate physical WiVRn streaming.
 .SH EXAMPLES
 .nf
-cmuxr --console
 cmuxr --no-gui
 cmuxr --gui
+cmuxr --gui --open "$HOME/Music/song.flac"
+DE_XR_TOOLKIT=Qt6 cmuxr --gui
 cmuxr --floor off
 cmuxr-floor --size 3x3
 .fi
@@ -137,4 +137,4 @@ cmuxr-floor --size 3x3
 .BR cmus-remote (1),
 .BR cmus-tutorial (7)
 .SH LICENSE
-GPL version 2 or later. The cmus authors retain their upstream copyrights.
+GPL version 2 or later; upstream cmus copyrights are retained.

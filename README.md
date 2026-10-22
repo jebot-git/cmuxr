@@ -1,10 +1,14 @@
-> This experimental branch defaults to FLTK 1.4.5. See [FLTK_EXPERIMENT.md](FLTK_EXPERIMENT.md) for build instructions and missing features.
-
 # cmuxr
 
-DomeD console / Qt6 / XR music player fork. See [cmuxr build, controls and integration](README.cmuxr.md).
-Command manuals: [cmuxr.1](docs/man/cmuxr.1) and
-[cmuxr-floor.1](docs/man/cmuxr-floor.1).
+Music player for the de-xr desktop: cmus console/audio engine, **FLTK 1.4.5
+graphical frontend by default**, optional Qt6 frontend and an audio-reactive XR
+floor. `cmuxr --gui` selects the configured frontend; use
+`DE_XR_TOOLKIT=Qt6 cmuxr --gui` to opt into Qt/PySide6 explicitly.
+
+See [build, installation, controls and XR guide](README.cmuxr.md),
+[cmuxr manual](docs/man/cmuxr.1) and [floor manual](docs/man/cmuxr-floor.1).
+The upstream cmus build and licensing notes below describe the console core;
+they do not build or install the additional FLTK frontend.
 
 ---
 

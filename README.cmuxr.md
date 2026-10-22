@@ -1,110 +1,124 @@
 # cmuxr
 
-A [cmus](https://github.com/cmus/cmus) fork for [DomeD](https://github.com/jebot-git/DomeD):
-console playback, an optional Qt6 player and tray, and an audio-reactive XR floor.
-Based on upstream commit `36ae5c4817985239619f2ca0cfe438d322298f3a`
-(2026-10-03), pulled 2026-10-20. Upstream history and GPL-2.0-or-later licensing
-are retained. The separately built DomeD renderer retains its MIT license.
+A [cmus](https://github.com/cmus/cmus) fork for [DomeD](https://github.com/jebot-git/DomeD),
+with the original console engine, a default FLTK 1.4.5 GUI and a decoded-audio XR
+floor. The retained PySide6/Qt6 GUI is an explicit runtime opt-in. Upstream history
+and GPL-2.0-or-later licensing remain; the separate DomeD renderer retains MIT.
 
-## Build and install
+## Build and stage
 
-Dependencies are those of cmus (`./configure --help`), including ncurses, a
-decoder and an output backend. Python 3 is required for the launcher; PySide6
-(Qt6) is optional for console playback. The tested configuration includes FFmpeg,
-FLAC, Vorbis, WAV and ALSA. An ALSA pulse device can route audio through PipeWire.
+The core needs its cmus dependencies (`./configure --help`): ncurses, selected
+decoders and an audio output backend. Python 3 runs the launcher/engine bridge.
+The default GUI additionally needs CMake 3.21+, C++17, the de-xr patched **FLTK
+1.4.5** shared libraries, Fontconfig, GIO, Wayland/X11 headers and
+`wayland-scanner`. The FLTK package must include OpenGL/image libraries and the
+bitmap-font, app-ID/menu and Wayland dialog fixes described in
+[FLTK notes](FLTK_EXPERIMENT.md). Qt/PySide6 is not needed for this frontend.
 
-Build as your user and stage a system installation:
+Build as your regular user and stage both parts:
 
 ```sh
 DESTDIR="$PWD/stage" ./scripts/install-cmuxr.sh /usr/local
-# Review stage/usr/local, then install its contents with administrator privileges.
+FLTK_PREFIX=/path/to/patched-fltk-1.4.5
+cmake -S fltk -B build-fltk -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$FLTK_PREFIX"
+cmake --build build-fltk --parallel
+DESTDIR="$PWD/stage" cmake --install build-fltk --prefix /usr/local
 ```
 
-For the XR application, use a compatible sibling DomeD checkout:
+The shell installer builds the console core and stages its plugins/data, Python
+modules, launcher, desktop entry and manual. **It does not build `cmuxr-fltk`:**
+the separate CMake step above is necessary for the default GUI. It installs
+`cmuxr-core`, preserving the distribution's `cmus` executable. Review staged
+files before privileged system installation. For direct source runs, use the
+built `cmus` core and `build-fltk/cmuxr-fltk`; an installed GUI must be on `PATH`
+or selected with `CMUXR_FLTK_BINARY`. Set `DE_XR_FLTK_PREFIX` to the matching
+patched runtime prefix when the launcher cannot locate it automatically.
+
+For the optional floor renderer, stage the integrated release build using a
+compatible sibling DomeD checkout:
 
 ```sh
 CMUXR_WITH_XR=1 CMUXR_DOMED_SOURCE=../DomeD \
   DESTDIR="$PWD/stage" ./scripts/install-cmuxr.sh /usr/local
 ```
 
-The XR installer applies `integration/domed-music-floor.patch`, tests the floor
-module, and builds the release renderer. It installs `cmuxr-floor`, its renderer,
-and the same integrated renderer as `dome-xr`, so DomeD's own Start XR command
-supports the effect. The installer defaults to `/usr/local`; an explicit prefix
-is supported. It installs `cmuxr-core` without replacing the `cmus` executable.
-Core plugins, themes and upstream manuals use cmus locations beneath the prefix.
+This applies `integration/domed-music-floor.patch`, tests the floor module and
+builds the renderer. It stages `cmuxr-floor`, `cmuxr-floor-renderer` and the
+integrated `dome-xr`; review these shared renderer files before installation.
+It does not restart an active desktop or headset session. The optional desktop
+entry uses a 3 by 3 metre floor. Audio file associations advertise supported
+formats without changing existing defaults; actual formats depend on core plugins.
 
-The application menu contains **cmuxr** and, with XR enabled, **cmuxr XR Floor**.
-cmuxr is also available in DomeD's **Default Applications** choices for MP3,
-FLAC and Ogg audio. Select it there to use it for opening music files.
-The desktop entry registers WAV, Opus, AAC and M4A audio as well; playback
-requires the corresponding decoder in the installed core. Existing defaults
-are preserved. Opening audio starts playback in the current player, or starts
-a player if needed; additional selected files are queued.
-Manual pages are installed for `man cmuxr` and `man cmuxr-floor`.
-User configuration and music libraries remain separate from installed files.
-
-## Run
+## Launch and configuration
 
 ```sh
-cmuxr --console          # terminal player with tray when available
-cmuxr --no-gui           # console only; no Qt imports
-cmuxr --gui              # Qt6 player
-cmuxr --gui --open ~/Music/song.flac  # also accepts local file:// URIs
-cmuxr --tray             # hidden initially when a tray is available
-cmuxr-floor --size 3x3   # DomeD first; standalone WiVRn fallback if DomeD is absent
-cmuxr --floor off        # disable the visible effect persistently
-cmuxr --floor on
+./cmuxr --no-gui                         # console engine, no GUI toolkit
+DE_XR_FLTK_PREFIX=/path/to/patched-fltk-1.4.5 ./cmuxr --gui
+cmuxr --console                          # console plus companion when available
+cmuxr --gui --open "$HOME/Music/song.flac"
+cmuxr --tray                             # hidden if a tray watcher exists
+DE_XR_TOOLKIT=Qt6 cmuxr --gui             # explicit PySide6/Qt frontend
+cmuxr-floor --size 3x3
+cmuxr --floor off
 ```
 
-DomeD is the primary XR host. The floor launcher reuses an active DomeD XR
-session or starts its renderer against the DomeD control service. It uses a
-standalone OpenXR overlay only when DomeD is not in use, and yields that overlay
-when DomeD starts. If DomeD is present but its service cannot be reached, the
-launcher reports an error instead of starting an unrelated overlay.
-`DOME_PREVIEW_PORT` selects its local port (default 49640), or use
-`cmuxr-floor --server http://127.0.0.1:PORT`. An explicit server never falls back.
+An interactive terminal defaults to the console; a graphical nonterminal launch
+opens FLTK. A display-less session uses the console. `--gui` does not mean Qt on
+this branch, despite the old wording in launcher help. `--no-gui` prevents a GUI
+companion. `--open FILE...` accepts local files/file URIs, plays the first and
+queues additional selections in an existing engine when possible. Repeated GUI
+launches wake the existing frontend. `--floor on|off` alone saves the preference
+and exits; `cmuxr-floor` starts the renderer. Only `DE_XR_TOOLKIT=Qt6` opts into
+Qt; CMake's toolkit selector is not used for this standalone FLTK subproject.
 
-The launcher enables the effect and starts a tray player if needed. Choose a
-track and press Enter to play. It uses the current OpenXR runtime; set
-`XR_RUNTIME_JSON` for a process-specific override. The headset session and the
-main XR application continue running.
+## FLTK controls
 
-## Controls and appearance
+The native form provides asynchronous engine requests, paged/searchable
+Playlist/Library/Queue views, seek and volume controls, spectrum, queue/library
+commands, exported command menus and a StatusNotifierItem tray. With a tray
+watcher, closing hides the window and activation reopens it. Without a watcher,
+`--tray` falls back to a visible window. File choosers are native FLTK.
 
-The tray provides **Play / Pause**, **Stop**, **List**, an XR floor toggle, and
-**Quit cmuxr**. Clicking its icon opens the list. Closing a window hides it to an
-available tray; Quit stops playback. Without a tray, the window remains available.
-The GUI starts the console engine on a pseudoterminal when needed.
+| Input | Action |
+| --- | --- |
+| Enter / Space | Play selected / play or pause |
+| Ctrl+Left / Ctrl+Right | Previous / next track |
+| Alt+Left / Alt+Right | Seek backward / forward |
+| Ctrl+O / Ctrl+E | Add files / queue selected |
+| Delete / F5 | Remove library entry / refresh |
+| + / - | Volume up / down |
+| Ctrl+Q | Quit |
 
-* **Up / Down** select tracks and wrap at either end.
-* **Space** pauses or resumes; **Enter** plays the selection.
-* **Right** enters a directory or the selected track's directory.
-* **Left** opens its parent, or the library from a playlist.
-* The source selector opens the current playlist, library or playing directory.
-* Mouse scrolling loads more entries and wraps at the ends.
+Removal changes the music library, not audio files. DomeD supplies XR pointer
+and keyboard input to the ordinary Wayland surface. Its palette and native
+bitmap strike update live; application menus are exported with DBusMenu/KDE
+AppMenu when supported. Bitmap shaping/bidi, glyph fallback, accessibility/IME
+and fractional-scale coverage remain incomplete. Full real-library and
+installation/relocation coverage remains outstanding; simulated XR tests do not
+establish physical WiVRn streaming or headset behavior.
 
-The Qt menu bar uses **File**, **Playback**, **Go**, **Library**, and **View**
-menus. **File → Open Files…** (`Ctrl+O`) plays files; **Open Folder…**
-(`Ctrl+Shift+O`) browses a folder. The navigation bar provides Back, Forward,
-Up, and an editable directory path. Use `Alt+Left` / `Alt+Right` for history,
-`Alt+Up` for the parent, `Alt+Home` for home, `Ctrl+L` or `Alt+D` to edit the
-location, and `F5` to refresh. **Go** also offers Home, Music, and Playing Directory.
+## Optional Qt6 interface
 
-**Library** can add files, recursively add folders, add the selected entry or
-current directory, update metadata and missing tracks, remove the selected
-library track (`Delete`), or clear the library after confirmation. Removing
-entries leaves audio files on disk. Right-click an entry for playback, folder,
-and library actions. `Ctrl+1` opens the library; `Ctrl+2` opens the current playlist.
+Install PySide6 separately and launch with `DE_XR_TOOLKIT=Qt6`. The retained Qt
+form has a compact source selector, folder navigation/history and File,
+Playback, Go, Library and View menus. Its folder shortcuts include Ctrl+O,
+Ctrl+Shift+O, Alt+Left/Right/Up, Ctrl+L and F5. Ctrl+1/2 select library/playlist.
+Those controls and `visible_entries` settings describe the Qt interface, not
+FLTK feature parity. The frontend polls DomeD appearance settings. The compact
+library design is inspired by qcmus; no qcmus source is copied.
 
-The compact view defaults to ten visible entries. The model caches at most eight
-128-entry library/playlist pages. Directory playback creates a separate playlist
-containing its direct tracks; existing user playlists are preserved.
+## XR routing
 
-Both desktop and XR use the same Qt6 player. It polls DomeD appearance settings
-for the light/dark scheme, accent, global font, font size and chrome opacity.
-The compact controls and library concept are inspired by
-[qcmus](https://github.com/neoaggelos/qcmus); no qcmus source is copied.
+`cmuxr-floor` reuses active DomeD XR or starts its renderer attached to DomeD's
+control service. It falls back to a standalone OpenXR overlay only when DomeD
+is absent, then yields if DomeD starts. If DomeD is present but unreachable,
+startup reports an error. `--server http://127.0.0.1:PORT` explicitly selects a
+loopback service and forbids fallback; otherwise `DOME_PREVIEW_PORT` selects the
+port (default 49640). The floor launcher enables the preference and starts the
+selected tray frontend if needed, unless `--no-player` was passed.
+`XR_RUNTIME_JSON` selects a process-specific runtime. No display-manager or
+currently running main XR application is restarted.
 
 ## Floor effect
 
@@ -141,21 +155,18 @@ The runtime file `cmuxr-floor.json` contains expiring spectrum frames.
 ## Validation
 
 ```sh
-make -j4
 python3 -m unittest discover -s tests -v
-./scripts/integrate-domed.sh ../DomeD
+./configure --help
+./cmuxr --help
+./cmuxr-floor --help
 ```
 
-Tests use a real console engine through its pseudoterminal and Unix socket for
-paged listing, Unicode/escaped filenames, selection, directory context and stop.
-With PySide6 they also check keyboard wrapping and directory navigation.
-Spectrum tests cover silence and frequency discrimination across PCM formats.
-XR routing tests cover DomeD reuse, service selection, fallback restrictions and
-loopback validation. DomeD tests cover stale/disabled/paused frames and floor tiles.
-
-The Qt6 frontend has been checked offscreen. A running WiVRn session accepted the
-floor as a focused transparent overlay with headset audio and a 3 by 3 metre
-extent. Physical room alignment still depends on the runtime's STAGE calibration.
+These include engine protocol/paging, spectrum PCM formats, and floor routing
+fixtures; Qt-specific tests need PySide6. Read the individual test prerequisites
+before running display/XR tests. FLTK CMake currently defines no CTest suite;
+its suite-level fixtures live in the de-xr integration checkout. Physical floor
+alignment depends on runtime STAGE calibration. No documentation update alone
+validates a connected headset or starts/restarts a runtime.
 
 ## Command manuals and related projects
 
