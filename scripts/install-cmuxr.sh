@@ -12,6 +12,8 @@ install -m755 cmuxr "$destination/bin/cmuxr"
 install -m644 cmuxr_gui/*.py "$destination/share/cmuxr/cmuxr_gui/"
 install -m644 COPYING "$destination/share/cmuxr/licenses/COPYING.cmus"
 install -m644 integration/org.domed.cmuxr.desktop "$destination/share/applications/"
+# The floor is controlled from the player UI. Retire its old menu launcher on upgrade.
+rm -f "$destination/share/applications/org.domed.cmuxr-floor.desktop"
 install -m644 docs/man/cmuxr.1 "$destination/share/man/man1/"
 if [ "${CMUXR_WITH_XR:-0}" = 1 ]; then
     dome=${CMUXR_DOMED_SOURCE:-../DomeD}
@@ -22,7 +24,6 @@ if [ "${CMUXR_WITH_XR:-0}" = 1 ]; then
     install -m755 "$dome/target/release/dome-xr" "$destination/bin/dome-xr"
     install -m755 cmuxr-floor "$destination/bin/cmuxr-floor"
     install -m644 integration/LICENSE.DomeD "$destination/share/cmuxr/licenses/"
-    install -m644 integration/org.domed.cmuxr-floor.desktop "$destination/share/applications/"
     install -m644 docs/man/cmuxr-floor.1 "$destination/share/man/man1/"
 fi
 if [ -z "${DESTDIR:-}" ] && command -v update-desktop-database >/dev/null 2>&1; then

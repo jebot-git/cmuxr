@@ -46,8 +46,9 @@ CMUXR_WITH_XR=1 CMUXR_DOMED_SOURCE=../DomeD \
 This applies `integration/domed-music-floor.patch`, tests the floor module and
 builds the renderer. It stages `cmuxr-floor`, `cmuxr-floor-renderer` and the
 integrated `dome-xr`; review these shared renderer files before installation.
-It does not restart an active desktop or headset session. The optional desktop
-entry uses a 3 by 3 metre floor. Audio file associations advertise supported
+It does not restart an active desktop or headset session. Enable the floor with
+the player's XR spectrum floor control; only the player appears in the application
+menu. Audio file associations advertise supported
 formats without changing existing defaults; actual formats depend on core plugins.
 
 ## Launch and configuration
@@ -137,8 +138,8 @@ samples and either byte order is supported.
 The renderer normally uses runtime STAGE bounds. Some WiVRn builds do not expose
 room dimensions; `--size 3x3` explicitly supplies a width/depth while retaining
 STAGE floor height and anchoring. The chosen extent is persisted as
-`floor_size_m` and is also read by DomeD's own renderer. The application-menu
-launcher uses this 3 by 3 metre extent. LOCAL space is never assumed to be a floor.
+`floor_size_m` and is also read by DomeD's own renderer. Use `cmuxr-floor --size 3x3`
+to request this extent from the command line. LOCAL space is never assumed to be a floor.
 
 ## Configuration
 

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=cmuxr XR Floor
-Comment=DomeD music floor with standalone WiVRn fallback
-Exec=cmuxr-floor --size 3x3
-Icon=multimedia-player
-Terminal=false
-Categories=AudioVideo;Audio;Player;
-StartupNotify=false
