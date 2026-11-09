@@ -80,6 +80,10 @@ Playlist/Library/Queue views, seek and volume controls, spectrum, queue/library
 commands, exported command menus and a StatusNotifierItem tray. With a tray
 watcher, closing hides the window and activation reopens it. Without a watcher,
 `--tray` falls back to a visible window. File choosers are native FLTK.
+Inside DomeD, the universal menu replaces the local menu bar and the track list
+uses the reclaimed space. Shortcuts remain active. The local bar returns if the
+menu host is unavailable. The tray manager shares these commands, including
+View > Show player and live Shuffle, Repeat and XR floor checkmarks.
 
 | Input | Action |
 | --- | --- |
@@ -89,7 +93,7 @@ watcher, closing hides the window and activation reopens it. Without a watcher,
 | Ctrl+O / Ctrl+E | Add files / queue selected |
 | Delete / F5 | Remove library entry / refresh |
 | + / - | Volume up / down |
-| Ctrl+Q | Quit |
+| Super+Q | Quit |
 
 Removal changes the music library, not audio files. DomeD supplies XR pointer
 and keyboard input to the ordinary Wayland surface. Its palette and native
@@ -165,7 +169,15 @@ python3 -m unittest discover -s tests -v
 These include engine protocol/paging, spectrum PCM formats, and floor routing
 fixtures; Qt-specific tests need PySide6. Read the individual test prerequisites
 before running display/XR tests. FLTK CMake currently defines no CTest suite;
-its suite-level fixtures live in the de-xr integration checkout. Physical floor
+the native menu regression is opt-in:
+
+```sh
+CMUXR_MENU_BINARY="$PWD/build-fltk/cmuxr-fltk" python3 tests/test_fltk_menu.py -v
+```
+
+It uses a private session bus and Xvfb, requiring PyGObject, python-xlib and
+Pillow. Set `LD_LIBRARY_PATH` for the matching patched FLTK runtime if needed.
+Additional suite-level fixtures live in the de-xr integration checkout. Physical floor
 alignment depends on runtime STAGE calibration. No documentation update alone
 validates a connected headset or starts/restarts a runtime.
 

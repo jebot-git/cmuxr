@@ -115,7 +115,7 @@ public:
   }
 };
 class Player : public dx::GpuWindow {
-  Fl_Menu_Bar menu{0, 0, 900, 25};
+  DesktopMenuBar menu{0, 0, 900, 25};
   Fl_Box now{10, 28, 880, 32};
   Fl_Button previous{10, 65, 120, 30, "Previous"},
       play{140, 65, 150, 30, "Play / Pause"}, stop{300, 65, 100, 30, "Stop"},
@@ -150,6 +150,21 @@ class Player : public dx::GpuWindow {
     return std::async(std::launch::async, [value] { return request(value); });
   }
   void error(const std::exception &e) { info.copy_label(e.what()); }
+  void showPlayer() {
+    show();
+    take_focus();
+  }
+  void checkMenu(const char *path, bool checked) {
+    int index = menu.find_index(path);
+    if (index < 0)
+      return;
+    int flags = menu.mode(index);
+    int next = checked ? flags | FL_MENU_VALUE : flags & ~FL_MENU_VALUE;
+    if (next != flags) {
+      menu.mode(index, next);
+      menu.redraw();
+    }
+  }
   void command(std::string value) {
     if (commands.size() < 128)
       commands.push_back(std::move(value));
@@ -259,7 +274,9 @@ class Player : public dx::GpuWindow {
     else if (name == "Toggle XR floor") {
       floor.value(!floor.value());
       store();
-    } else if (name == "Quit") {
+    } else if (name == "Show player")
+      showPlayer();
+    else if (name == "Quit") {
       closed = true;
       hide();
     }
@@ -325,7 +342,7 @@ public:
     for (auto item : std::vector<std::pair<const char *, int>>{
              {"File/Add files", FL_CTRL + 'o'},
              {"File/Add folder", 0},
-             {"File/Quit", FL_CTRL + 'q'},
+             {"File/Quit", FL_META + 'q'},
              {"Playback/Play or pause", ' '},
              {"Playback/Stop", 0},
              {"Playback/Previous", FL_CTRL + FL_Left},
@@ -341,6 +358,7 @@ public:
              {"Library/Remove from library", FL_Delete},
              {"Library/Update library", 0},
              {"Library/Refresh", FL_F + 5},
+             {"View/Show player", 0},
              {"View/Toggle XR floor", 0}})
       menu.add(
           item.first, item.second,
@@ -348,6 +366,11 @@ public:
             ((Player *)p)->menuCommand(((Fl_Menu_ *)w)->mvalue()->label());
           },
           this);
+    for (auto path : {"Playback/Shuffle", "Playback/Repeat",
+                      "View/Toggle XR floor"}) {
+      int index = menu.find_index(path);
+      menu.mode(index, menu.mode(index) | FL_MENU_TOGGLE);
+    }
     seek.type(FL_HOR_NICE_SLIDER);
     seek.range(0, 1);
     seek.callback(
@@ -377,13 +400,22 @@ public:
       preferences = Json::object();
     }
     floor.value(preferences.value("floor_enabled", true));
+    checkMenu("View/Toggle XR floor", floor.value());
+    menu.layoutChanged = [this] {
+      // Reclaim the local menu's space without moving the bottom controls or
+      // changing the user's window size. Reset FLTK's resize baseline after it.
+      int delta = menu.h() + 3 - now.y();
+      for (auto widget : std::array<Fl_Widget *, 7>{
+               &now, &previous, &play, &stop, &next, &add, &source})
+        widget->position(widget->x(), widget->y() + delta);
+      tracks.resize(tracks.x(), tracks.y() + delta, tracks.w(),
+                    tracks.h() - delta);
+      init_sizes();
+    };
     desktop = std::make_unique<DesktopMenu>(*this, menu);
     tray = std::make_unique<StatusIcon>(*desktop);
     trayRequested = trayOnly;
-    tray->activate = [this] {
-      show();
-      take_focus();
-    };
+    tray->activate = [this] { showPlayer(); };
     tray->scroll = [this](int delta) {
       command(delta > 0 ? "vol +5%" : "vol -5%");
     };
@@ -409,6 +441,7 @@ public:
     showFiles();
   }
   void poll() {
+    checkMenu("View/Toggle XR floor", floor.value());
     for (auto path : {"Library/Play selected", "Library/Queue selected",
                       "Library/Remove from library"})
       dx::enable_menu(menu, path, !selected().empty());
@@ -489,6 +522,10 @@ public:
             duration = std::stod(line.substr(9));
           if (line.rfind("position ", 0) == 0)
             position = std::stod(line.substr(9));
+          if (line.rfind("set shuffle ", 0) == 0)
+            checkMenu("Playback/Shuffle", line.substr(12) == "true");
+          if (line.rfind("set repeat ", 0) == 0)
+            checkMenu("Playback/Repeat", line.substr(11) == "true");
         }
         if (text != std::string(now.label() ? now.label() : ""))
           now.copy_label(text.c_str());
